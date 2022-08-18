@@ -5,7 +5,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use crate::{PaletteKind, Version};
 
 #[derive(Debug, Clone)]
-pub struct Decoder {
+pub struct Decoder<'a> {
     pub version: Version,
     pub groups_count: u32,
     pub images_count: u32,
@@ -13,7 +13,7 @@ pub struct Decoder {
     pub first_subfile_offset: u32,
     pub subfile_header_size: u32,
     pub comments: [u8; 476],
-    pub sprites: Vec<Sprite>,
+    pub sprites: Vec<Sprite<'a>>,
 }
 
 #[derive(Debug)]
@@ -31,8 +31,8 @@ impl From<io::Error> for DecodeError {
     }
 }
 
-impl Decoder {
-    pub fn decode(data: &[u8]) -> Result<Self, DecodeError> {
+impl<'a> Decoder<'a> {
+    pub fn decode(data: &'a [u8]) -> Result<Self, DecodeError> {
         if &data[0..12] != b"ElecbyteSpr\0" {
             return Err(DecodeError::InvalidSignature);
         }
@@ -65,7 +65,7 @@ impl Decoder {
 
         let mut images: Vec<Sprite> = Vec::with_capacity(images_count as usize);
         let mut next_subfile_offset = Some(first_subfile_offset);
-        let mut previous_palette: Option<Vec<u8>> = None;
+        let mut previous_palette_offset = None;
         let total_size = data.len() as u32;
         while let Some(offset) = next_subfile_offset.take() {
             bytes.set_position(offset.into());
@@ -75,7 +75,7 @@ impl Decoder {
                 _ => None,
             });
 
-            let size = bytes.read_u32::<LittleEndian>()?;
+            let size = bytes.read_u32::<LittleEndian>()? as usize;
             let x = bytes.read_i16::<LittleEndian>()?;
             let y = bytes.read_i16::<LittleEndian>()?;
             let group = bytes.read_u16::<LittleEndian>()?;
@@ -86,35 +86,25 @@ impl Decoder {
 
             bytes.seek(SeekFrom::Current(13))?;
 
-            let (sprite_size, palette) = match previous_palette {
+            let data_offset = bytes.position() as usize;
+            let palette_size = 256 * 3;
+
+            let (data_size, palette_offset) = match previous_palette_offset {
                 None if use_previous_palette => return Err(DecodeError::PreviousPaletteNotFound),
-                Some(ref palette) if use_previous_palette => (size, palette.clone()),
+                Some(offset) if use_previous_palette => (size, offset),
                 _ => {
-                    let position = bytes.position();
-
-                    let palette_size = 256 * 3;
-                    bytes.seek(SeekFrom::Current((size - palette_size).into()))?;
-                    let mut palette_data = Vec::new();
-                    palette_data.resize(256 * 3, 0);
-                    bytes.read_exact(&mut palette_data)?;
-                    previous_palette = Some(palette_data.clone());
-
-                    bytes.set_position(position);
-
-                    (size - palette_size, palette_data)
+                    let offset = (data_offset + size) - palette_size;
+                    previous_palette_offset = Some(offset);
+                    (size - palette_size, offset)
                 }
             };
 
-            let mut sprite = Vec::new();
-            sprite.resize(sprite_size as usize, 0);
-            bytes.read_exact(&mut sprite)?;
-
             images.push(Sprite {
-                data: sprite,
-                palette,
+                data: &data[data_offset..data_offset + data_size],
+                palette: &data[palette_offset..palette_offset + palette_size],
                 coordinates: (x, y),
-                group,
                 image,
+                group,
             });
         }
 
@@ -132,9 +122,9 @@ impl Decoder {
 }
 
 #[derive(Debug, Clone)]
-pub struct Sprite {
-    pub data: Vec<u8>,
-    pub palette: Vec<u8>,
+pub struct Sprite<'a> {
+    pub data: &'a [u8],
+    pub palette: &'a [u8],
     pub coordinates: (i16, i16),
     pub group: u16,
     pub image: u16,
