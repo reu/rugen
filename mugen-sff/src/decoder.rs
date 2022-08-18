@@ -25,6 +25,11 @@ pub enum DecodeError {
     UnsuporttedVersion(Version),
     InvalidPaletteKind,
     PreviousPaletteNotFound,
+    LinkedSpriteNotFound {
+        image: u16,
+        group: u16,
+        linked_index: u16,
+    },
 }
 
 impl From<io::Error> for DecodeError {
@@ -80,8 +85,7 @@ impl<'a> Decoder<'a> {
             let y = bytes.read_i16::<LittleEndian>()?;
             let group = bytes.read_u16::<LittleEndian>()?;
             let image = bytes.read_u16::<LittleEndian>()?;
-            // TODO: add support for linked sprites
-            let _linked_index = bytes.read_u16::<LittleEndian>()?;
+            let linked_index = bytes.read_u16::<LittleEndian>()?;
             let use_previous_palette = bytes.read_u8()? != 0;
 
             bytes.seek(SeekFrom::Current(13))?;
@@ -99,13 +103,33 @@ impl<'a> Decoder<'a> {
                 }
             };
 
-            images.push(Sprite {
-                data: Cow::Borrowed(&data[data_offset..data_offset + data_size]),
-                palette: Cow::Borrowed(&data[palette_offset..palette_offset + palette_size]),
-                coordinates: (x, y),
-                image,
-                group,
-            });
+            let sprite = if size == 0 {
+                let linked_sprite =
+                    images
+                        .get(linked_index as usize)
+                        .ok_or(DecodeError::LinkedSpriteNotFound {
+                            image,
+                            group,
+                            linked_index,
+                        })?;
+
+                Sprite {
+                    image,
+                    group,
+                    coordinates: (x, y),
+                    ..linked_sprite.clone()
+                }
+            } else {
+                Sprite {
+                    data: Cow::Borrowed(&data[data_offset..data_offset + data_size]),
+                    palette: Cow::Borrowed(&data[palette_offset..palette_offset + palette_size]),
+                    coordinates: (x, y),
+                    image,
+                    group,
+                }
+            };
+
+            images.push(sprite);
         }
 
         Ok(Decoder {
@@ -248,6 +272,48 @@ mod tests {
         assert_eq!(
             [sprites[7].raw_data(), sprites[7].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-50-5.pcx")
+        );
+    }
+
+    #[test]
+    fn decode_linked_sprites() {
+        let sff = include_bytes!("../tests/samples/sample/linked.sff");
+        let sff = Decoder::decode(sff).unwrap();
+
+        let sprites = sff.sprites().collect::<Vec<_>>();
+
+        assert_eq!(8, sprites.len());
+        assert_eq!(
+            [sprites[0].raw_data(), sprites[0].palette()].concat(),
+            include_bytes!("../tests/samples/sample/linked-0.pcx")
+        );
+        assert_eq!(
+            [sprites[1].raw_data(), sprites[1].palette()].concat(),
+            include_bytes!("../tests/samples/sample/linked-0.pcx")
+        );
+        assert_eq!(
+            [sprites[2].raw_data(), sprites[2].palette()].concat(),
+            include_bytes!("../tests/samples/sample/linked-0.pcx")
+        );
+        assert_eq!(
+            [sprites[3].raw_data(), sprites[3].palette()].concat(),
+            include_bytes!("../tests/samples/sample/linked-0.pcx")
+        );
+        assert_eq!(
+            [sprites[4].raw_data(), sprites[4].palette()].concat(),
+            include_bytes!("../tests/samples/sample/linked-1.pcx")
+        );
+        assert_eq!(
+            [sprites[5].raw_data(), sprites[5].palette()].concat(),
+            include_bytes!("../tests/samples/sample/linked-1.pcx")
+        );
+        assert_eq!(
+            [sprites[6].raw_data(), sprites[6].palette()].concat(),
+            include_bytes!("../tests/samples/sample/linked-2.pcx")
+        );
+        assert_eq!(
+            [sprites[7].raw_data(), sprites[7].palette()].concat(),
+            include_bytes!("../tests/samples/sample/linked-2.pcx")
         );
     }
 
