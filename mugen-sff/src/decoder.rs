@@ -1,5 +1,7 @@
 use std::{
     borrow::Cow,
+    error::Error,
+    fmt::Display,
     io::{self, Cursor, Seek, SeekFrom},
     str::{self, Utf8Error},
 };
@@ -29,6 +31,35 @@ pub enum DecodeError {
         sprite_id: SpriteId,
         linked_index: u16,
     },
+}
+
+impl Display for DecodeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DecodeError::InvalidData(err) => err.fmt(f),
+            DecodeError::InvalidSignature => write!(f, "invalid signature"),
+            DecodeError::UnsuporttedVersion(v) => write!(f, "unsupported version {:?}", v),
+            DecodeError::InvalidPaletteKind => write!(f, "invalid palette kind"),
+            DecodeError::PreviousPaletteNotFound => write!(f, "previous palette not found"),
+            DecodeError::LinkedSpriteNotFound {
+                sprite_id,
+                linked_index,
+            } => write!(
+                f,
+                "invalid link {} for sprite {}-{}",
+                linked_index, sprite_id.group, sprite_id.image
+            ),
+        }
+    }
+}
+
+impl Error for DecodeError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            DecodeError::InvalidData(ref err) => Some(err),
+            _ => None,
+        }
+    }
 }
 
 impl From<io::Error> for DecodeError {
