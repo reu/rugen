@@ -10,14 +10,12 @@ use crate::{PaletteKind, Version};
 
 #[derive(Debug, Clone)]
 pub struct Decoder<'a> {
-    pub version: Version,
-    pub groups_count: u32,
-    pub images_count: u32,
-    pub palette_kind: PaletteKind,
-    pub first_subfile_offset: u32,
-    pub subfile_header_size: u32,
-    pub comments: Comments<'a>,
-    pub sprites: Vec<Sprite<'a>>,
+    version: Version,
+    groups_count: u32,
+    images_count: u32,
+    palette_kind: PaletteKind,
+    comments: Comments<'a>,
+    sprites: Vec<Sprite<'a>>,
 }
 
 #[derive(Debug)]
@@ -115,11 +113,33 @@ impl<'a> Decoder<'a> {
             groups_count,
             images_count,
             palette_kind,
-            first_subfile_offset,
-            subfile_header_size,
             comments,
             sprites: images,
         })
+    }
+
+    pub fn comments(&self) -> &Comments {
+        &self.comments
+    }
+
+    pub fn palette_kind(&self) -> PaletteKind {
+        self.palette_kind
+    }
+
+    pub fn version(&self) -> Version {
+        self.version
+    }
+
+    pub fn groups_count(&self) -> u32 {
+        self.groups_count
+    }
+
+    pub fn images_count(&self) -> u32 {
+        self.images_count
+    }
+
+    pub fn sprites(&self) -> impl Iterator<Item = Sprite> {
+        self.sprites.iter().cloned()
     }
 }
 
@@ -182,11 +202,11 @@ mod tests {
         let sff = include_bytes!("../tests/samples/sample/sample.sff");
         let sff = Decoder::decode(sff).unwrap();
 
-        assert_eq!(Version(1, 0, 1, 0), sff.version);
-        assert_eq!(4, sff.groups_count);
-        assert_eq!(8, sff.images_count);
-        assert_eq!(PaletteKind::Shared, sff.palette_kind);
-        assert_eq!(Ok("Some comment"), sff.comments.as_str());
+        assert_eq!(Version(1, 0, 1, 0), sff.version());
+        assert_eq!(4, sff.groups_count());
+        assert_eq!(8, sff.images_count());
+        assert_eq!(PaletteKind::Shared, sff.palette_kind());
+        assert_eq!(Ok("Some comment"), sff.comments().as_str());
     }
 
     #[test]
@@ -194,37 +214,39 @@ mod tests {
         let sff = include_bytes!("../tests/samples/sample/sample.sff");
         let sff = Decoder::decode(sff).unwrap();
 
-        assert_eq!(8, sff.sprites.len());
+        let sprites = sff.sprites().collect::<Vec<_>>();
+
+        assert_eq!(8, sprites.len());
         assert_eq!(
-            [sff.sprites[0].raw_data(), sff.sprites[0].palette()].concat(),
+            [sprites[0].raw_data(), sprites[0].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-0-0.pcx")
         );
         assert_eq!(
-            [sff.sprites[1].raw_data(), sff.sprites[1].palette()].concat(),
+            [sprites[1].raw_data(), sprites[1].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-0-1.pcx")
         );
         assert_eq!(
-            [sff.sprites[2].raw_data(), sff.sprites[2].palette()].concat(),
+            [sprites[2].raw_data(), sprites[2].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-1-0.pcx")
         );
         assert_eq!(
-            [sff.sprites[3].raw_data(), sff.sprites[3].palette()].concat(),
+            [sprites[3].raw_data(), sprites[3].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-1-1.pcx")
         );
         assert_eq!(
-            [sff.sprites[4].raw_data(), sff.sprites[4].palette()].concat(),
+            [sprites[4].raw_data(), sprites[4].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-10-10.pcx")
         );
         assert_eq!(
-            [sff.sprites[5].raw_data(), sff.sprites[5].palette()].concat(),
+            [sprites[5].raw_data(), sprites[5].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-10-20.pcx")
         );
         assert_eq!(
-            [sff.sprites[6].raw_data(), sff.sprites[6].palette()].concat(),
+            [sprites[6].raw_data(), sprites[6].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-50-0.pcx")
         );
         assert_eq!(
-            [sff.sprites[7].raw_data(), sff.sprites[7].palette()].concat(),
+            [sprites[7].raw_data(), sprites[7].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-50-5.pcx")
         );
     }
@@ -234,7 +256,7 @@ mod tests {
         let sff = include_bytes!("../tests/samples/sample/sample.sff");
         let sff = Decoder::decode(sff).unwrap();
 
-        let sprite = &sff.sprites[0];
+        let sprite = sff.sprites().next().unwrap();
         let sprite = sprite.to_owned();
 
         drop(sff);
