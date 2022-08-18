@@ -1,6 +1,7 @@
 use std::{
     borrow::Cow,
-    io::{self, Cursor, Read, Seek, SeekFrom},
+    io::{self, Cursor, Seek, SeekFrom},
+    str::{self, Utf8Error},
 };
 
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -15,7 +16,7 @@ pub struct Decoder<'a> {
     pub palette_kind: PaletteKind,
     pub first_subfile_offset: u32,
     pub subfile_header_size: u32,
-    pub comments: [u8; 476],
+    pub comments: Comments<'a>,
     pub sprites: Vec<Sprite<'a>>,
 }
 
@@ -62,9 +63,7 @@ impl<'a> Decoder<'a> {
             _ => return Err(DecodeError::InvalidPaletteKind),
         };
 
-        bytes.set_position(36);
-        let mut comments = [0; 476];
-        bytes.read_exact(&mut comments)?;
+        let comments = Comments(&data[36..511]);
 
         let mut images: Vec<Sprite> = Vec::with_capacity(images_count as usize);
         let mut next_subfile_offset = Some(first_subfile_offset);
@@ -165,6 +164,15 @@ impl<'a> Sprite<'a> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Comments<'a>(&'a [u8]);
+
+impl<'a> Comments<'a> {
+    pub fn as_str(&self) -> Result<&str, Utf8Error> {
+        Ok(str::from_utf8(self.0)?.trim_end_matches('\u{0}'))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{decoder::Decoder, PaletteKind, Version};
@@ -178,10 +186,7 @@ mod tests {
         assert_eq!(4, sff.groups_count);
         assert_eq!(8, sff.images_count);
         assert_eq!(PaletteKind::Shared, sff.palette_kind);
-        assert_eq!(
-            Ok("Some comment"),
-            std::str::from_utf8(&sff.comments).map(|c| c.trim_end_matches('\u{0}'))
-        );
+        assert_eq!(Ok("Some comment"), sff.comments.as_str());
     }
 
     #[test]
