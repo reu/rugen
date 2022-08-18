@@ -197,7 +197,7 @@ impl<'a> Sprite<'a> {
         &self.palette
     }
 
-    pub fn to_owned(self) -> Sprite<'static> {
+    pub fn to_owned(&self) -> Sprite<'static> {
         Sprite {
             data: Cow::Owned(self.raw_data().to_owned()),
             palette: Cow::Owned(self.palette().to_owned()),
