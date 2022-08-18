@@ -1,4 +1,5 @@
 pub mod decoder;
+pub use decoder::Decoder;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct SpriteId {
@@ -9,6 +10,12 @@ pub struct SpriteId {
 impl From<(u16, u16)> for SpriteId {
     fn from((group, image): (u16, u16)) -> Self {
         SpriteId { group, image }
+    }
+}
+
+impl From<SpriteId> for (u16, u16) {
+    fn from(SpriteId { group, image }: SpriteId) -> Self {
+        (group, image)
     }
 }
 

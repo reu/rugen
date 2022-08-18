@@ -1,0 +1,9 @@
+[package]
+name = "sff-sprite-extract"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+image = "0.24.3"
+mugen-sff = { path = "../../mugen-sff" }
+pcx = "0.2.3"

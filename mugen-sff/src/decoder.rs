@@ -192,8 +192,17 @@ impl<'a> Decoder<'a> {
         self.images_count
     }
 
-    pub fn sprites(&self) -> impl Iterator<Item = Sprite> {
-        self.sprites.iter().cloned()
+    pub fn sprites(&self) -> impl Iterator<Item = &Sprite> {
+        self.sprites.iter()
+    }
+}
+
+impl<'a> IntoIterator for Decoder<'a> {
+    type Item = Sprite<'a>;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.sprites.into_iter()
     }
 }
 
