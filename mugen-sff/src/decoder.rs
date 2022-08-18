@@ -1,4 +1,7 @@
-use std::io::{self, Cursor, Read, Seek, SeekFrom};
+use std::{
+    borrow::Cow,
+    io::{self, Cursor, Read, Seek, SeekFrom},
+};
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
@@ -100,8 +103,8 @@ impl<'a> Decoder<'a> {
             };
 
             images.push(Sprite {
-                data: &data[data_offset..data_offset + data_size],
-                palette: &data[palette_offset..palette_offset + palette_size],
+                data: Cow::Borrowed(&data[data_offset..data_offset + data_size]),
+                palette: Cow::Borrowed(&data[palette_offset..palette_offset + palette_size]),
                 coordinates: (x, y),
                 image,
                 group,
@@ -123,11 +126,43 @@ impl<'a> Decoder<'a> {
 
 #[derive(Debug, Clone)]
 pub struct Sprite<'a> {
-    pub data: &'a [u8],
-    pub palette: &'a [u8],
-    pub coordinates: (i16, i16),
-    pub group: u16,
-    pub image: u16,
+    data: Cow<'a, [u8]>,
+    palette: Cow<'a, [u8]>,
+    coordinates: (i16, i16),
+    group: u16,
+    image: u16,
+}
+
+impl<'a> Sprite<'a> {
+    pub fn group(&self) -> u16 {
+        self.group
+    }
+
+    pub fn image(&self) -> u16 {
+        self.image
+    }
+
+    pub fn coordinates(&self) -> (i16, i16) {
+        self.coordinates
+    }
+
+    pub fn raw_data(&self) -> &[u8] {
+        &self.data
+    }
+
+    pub fn palette(&self) -> &[u8] {
+        &self.palette
+    }
+
+    pub fn to_owned(self) -> Sprite<'static> {
+        Sprite {
+            data: Cow::Owned(self.raw_data().to_owned()),
+            palette: Cow::Owned(self.palette().to_owned()),
+            coordinates: self.coordinates,
+            group: self.group,
+            image: self.image,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -156,36 +191,52 @@ mod tests {
 
         assert_eq!(8, sff.sprites.len());
         assert_eq!(
-            [&sff.sprites[0].data[..], &sff.sprites[0].palette[..]].concat(),
+            [sff.sprites[0].raw_data(), sff.sprites[0].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-0-0.pcx")
         );
         assert_eq!(
-            [&sff.sprites[1].data[..], &sff.sprites[1].palette[..]].concat(),
+            [sff.sprites[1].raw_data(), sff.sprites[1].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-0-1.pcx")
         );
         assert_eq!(
-            [&sff.sprites[2].data[..], &sff.sprites[2].palette[..]].concat(),
+            [sff.sprites[2].raw_data(), sff.sprites[2].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-1-0.pcx")
         );
         assert_eq!(
-            [&sff.sprites[3].data[..], &sff.sprites[3].palette[..]].concat(),
+            [sff.sprites[3].raw_data(), sff.sprites[3].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-1-1.pcx")
         );
         assert_eq!(
-            [&sff.sprites[4].data[..], &sff.sprites[4].palette[..]].concat(),
+            [sff.sprites[4].raw_data(), sff.sprites[4].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-10-10.pcx")
         );
         assert_eq!(
-            [&sff.sprites[5].data[..], &sff.sprites[5].palette[..]].concat(),
+            [sff.sprites[5].raw_data(), sff.sprites[5].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-10-20.pcx")
         );
         assert_eq!(
-            [&sff.sprites[6].data[..], &sff.sprites[6].palette[..]].concat(),
+            [sff.sprites[6].raw_data(), sff.sprites[6].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-50-0.pcx")
         );
         assert_eq!(
-            [&sff.sprites[7].data[..], &sff.sprites[7].palette[..]].concat(),
+            [sff.sprites[7].raw_data(), sff.sprites[7].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-50-5.pcx")
+        );
+    }
+
+    #[test]
+    fn sprite_can_be_owned() {
+        let sff = include_bytes!("../tests/samples/sample/sample.sff");
+        let sff = Decoder::decode(sff).unwrap();
+
+        let sprite = &sff.sprites[0];
+        let sprite = sprite.to_owned();
+
+        drop(sff);
+
+        assert_eq!(
+            [sprite.raw_data(), sprite.palette()].concat(),
+            include_bytes!("../tests/samples/sample/sample-0-0.pcx")
         );
     }
 }
