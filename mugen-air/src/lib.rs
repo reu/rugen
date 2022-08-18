@@ -1,8 +1,10 @@
 use std::str::FromStr;
 
 use nom::{
+    branch::alt,
     bytes::complete::tag_no_case,
     character::complete::{char, digit1, i32, line_ending, multispace0, space0, space1},
+    combinator::{map_res, opt, success},
     multi::many1,
     sequence::{delimited, terminated, tuple},
     Finish, IResult,
@@ -25,6 +27,15 @@ pub struct AnimationElement {
     pub x: i32,
     pub y: i32,
     pub ticks: i32,
+    pub flip: Flip,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Flip {
+    NoFlip,
+    Horizontal,
+    Vertical,
+    Both,
 }
 
 #[derive(Debug)]
@@ -70,12 +81,20 @@ fn action_name(i: Span) -> ParseResult<&str> {
 }
 
 fn animation_element(i: Span) -> ParseResult<AnimationElement> {
-    let (i, (group, image, x, y, ticks)) = tuple((
+    let (i, (group, image, x, y, ticks, flip)) = tuple((
         terminated(delimited(space0, i32, space0), char(',')),
         terminated(delimited(space0, i32, space0), char(',')),
         terminated(delimited(space0, i32, space0), char(',')),
         terminated(delimited(space0, i32, space0), char(',')),
         delimited(space0, i32, space0),
+        alt((
+            delimited(
+                delimited(space0, char(','), space0),
+                opt(element_flip),
+                space0,
+            ),
+            success(None),
+        )),
     ))(i)?;
 
     let elem = AnimationElement {
@@ -84,9 +103,28 @@ fn animation_element(i: Span) -> ParseResult<AnimationElement> {
         x,
         y,
         ticks,
+        flip: flip.unwrap_or(Flip::NoFlip),
     };
 
     Ok((i, elem))
+}
+
+fn element_flip(i: Span) -> ParseResult<Flip> {
+    let flip = alt((
+        tag_no_case("VH"),
+        tag_no_case("HV"),
+        tag_no_case("V"),
+        tag_no_case("H"),
+    ));
+
+    map_res(flip, |flip: Span| {
+        match flip.to_ascii_uppercase().as_str() {
+            "VH" | "HV" => Ok(Flip::Both),
+            "H" => Ok(Flip::Horizontal),
+            "V" => Ok(Flip::Vertical),
+            _ => Err("Invalid flip"),
+        }
+    })(i)
 }
 
 #[cfg(test)]
@@ -135,5 +173,25 @@ mod tests {
         assert_eq!(element.x, 30);
         assert_eq!(element.y, 40);
         assert_eq!(element.ticks, 50);
+    }
+
+    #[test]
+    fn it_parses_animation_element_flip() {
+        let text = indoc! {"
+            [begin action 001]
+            200, 20, 30, 40, 50
+            200, 20, 30, 40, 50,
+            200, 20, 30, 40, 50, V
+            200, 20, 30, 40, 50, H
+            200, 20, 30, 40, 50, VH
+            200, 20, 30, 40, 50, HV
+        "};
+        let action = text.parse::<Action>().unwrap();
+        assert_eq!(action.elements[0].flip, Flip::NoFlip);
+        assert_eq!(action.elements[1].flip, Flip::NoFlip);
+        assert_eq!(action.elements[2].flip, Flip::Vertical);
+        assert_eq!(action.elements[3].flip, Flip::Horizontal);
+        assert_eq!(action.elements[4].flip, Flip::Both);
+        assert_eq!(action.elements[5].flip, Flip::Both);
     }
 }
