@@ -86,12 +86,14 @@ impl Decoder {
 
             bytes.seek(SeekFrom::Current(13))?;
 
-            let palette = match previous_palette {
+            let (sprite_size, palette) = match previous_palette {
                 None if use_previous_palette => return Err(DecodeError::PreviousPaletteNotFound),
-                Some(ref palette) if use_previous_palette => palette.clone(),
+                Some(ref palette) if use_previous_palette => (size, palette.clone()),
                 _ => {
                     let position = bytes.position();
 
+                    let palette_size = 256 * 3;
+                    bytes.seek(SeekFrom::Current((size - palette_size).into()))?;
                     let mut palette_data = Vec::new();
                     palette_data.resize(256 * 3, 0);
                     bytes.read_exact(&mut palette_data)?;
@@ -99,12 +101,12 @@ impl Decoder {
 
                     bytes.set_position(position);
 
-                    palette_data
+                    (size - palette_size, palette_data)
                 }
             };
 
             let mut sprite = Vec::new();
-            sprite.resize(size as usize, 0);
+            sprite.resize(sprite_size as usize, 0);
             bytes.read_exact(&mut sprite)?;
 
             images.push(Sprite {
@@ -166,6 +168,34 @@ mod tests {
         assert_eq!(
             [&sff.sprites[0].data[..], &sff.sprites[0].palette[..]].concat(),
             include_bytes!("../tests/samples/sample/sample-0-0.pcx")
+        );
+        assert_eq!(
+            [&sff.sprites[1].data[..], &sff.sprites[1].palette[..]].concat(),
+            include_bytes!("../tests/samples/sample/sample-0-1.pcx")
+        );
+        assert_eq!(
+            [&sff.sprites[2].data[..], &sff.sprites[2].palette[..]].concat(),
+            include_bytes!("../tests/samples/sample/sample-1-0.pcx")
+        );
+        assert_eq!(
+            [&sff.sprites[3].data[..], &sff.sprites[3].palette[..]].concat(),
+            include_bytes!("../tests/samples/sample/sample-1-1.pcx")
+        );
+        assert_eq!(
+            [&sff.sprites[4].data[..], &sff.sprites[4].palette[..]].concat(),
+            include_bytes!("../tests/samples/sample/sample-10-10.pcx")
+        );
+        assert_eq!(
+            [&sff.sprites[5].data[..], &sff.sprites[5].palette[..]].concat(),
+            include_bytes!("../tests/samples/sample/sample-10-20.pcx")
+        );
+        assert_eq!(
+            [&sff.sprites[6].data[..], &sff.sprites[6].palette[..]].concat(),
+            include_bytes!("../tests/samples/sample/sample-50-0.pcx")
+        );
+        assert_eq!(
+            [&sff.sprites[7].data[..], &sff.sprites[7].palette[..]].concat(),
+            include_bytes!("../tests/samples/sample/sample-50-5.pcx")
         );
     }
 }
