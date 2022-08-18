@@ -1,6 +1,18 @@
 pub mod decoder;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct SpriteId {
+    pub group: u16,
+    pub image: u16,
+}
+
+impl From<(u16, u16)> for SpriteId {
+    fn from((group, image): (u16, u16)) -> Self {
+        SpriteId { group, image }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum PaletteKind {
     Individual = 0,
     Shared = 1,

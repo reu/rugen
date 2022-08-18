@@ -6,7 +6,7 @@ use std::{
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
-use crate::{PaletteKind, Version};
+use crate::{PaletteKind, SpriteId, Version};
 
 #[derive(Debug, Clone)]
 pub struct Decoder<'a> {
@@ -26,8 +26,7 @@ pub enum DecodeError {
     InvalidPaletteKind,
     PreviousPaletteNotFound,
     LinkedSpriteNotFound {
-        image: u16,
-        group: u16,
+        sprite_id: SpriteId,
         linked_index: u16,
     },
 }
@@ -90,6 +89,9 @@ impl<'a> Decoder<'a> {
 
             bytes.seek(SeekFrom::Current(13))?;
 
+            let sprite_id = SpriteId { group, image };
+            let coordinates = Coordinates { x, y };
+
             let data_offset = bytes.position() as usize;
             let palette_size = 256 * 3;
 
@@ -108,24 +110,21 @@ impl<'a> Decoder<'a> {
                     images
                         .get(linked_index as usize)
                         .ok_or(DecodeError::LinkedSpriteNotFound {
-                            image,
-                            group,
+                            sprite_id,
                             linked_index,
                         })?;
 
                 Sprite {
-                    image,
-                    group,
-                    coordinates: (x, y),
+                    id: sprite_id,
+                    coordinates,
                     ..linked_sprite.clone()
                 }
             } else {
                 Sprite {
+                    id: sprite_id,
                     data: Cow::Borrowed(&data[data_offset..data_offset + data_size]),
                     palette: Cow::Borrowed(&data[palette_offset..palette_offset + palette_size]),
-                    coordinates: (x, y),
-                    image,
-                    group,
+                    coordinates,
                 }
             };
 
@@ -167,25 +166,38 @@ impl<'a> Decoder<'a> {
     }
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct Coordinates {
+    pub x: i16,
+    pub y: i16,
+}
+
+impl From<(i16, i16)> for Coordinates {
+    fn from((x, y): (i16, i16)) -> Self {
+        Self { x, y }
+    }
+}
+
+impl From<Coordinates> for (i16, i16) {
+    fn from(Coordinates { x, y }: Coordinates) -> Self {
+        (x, y)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Sprite<'a> {
+    id: SpriteId,
     data: Cow<'a, [u8]>,
     palette: Cow<'a, [u8]>,
-    coordinates: (i16, i16),
-    group: u16,
-    image: u16,
+    coordinates: Coordinates,
 }
 
 impl<'a> Sprite<'a> {
-    pub fn group(&self) -> u16 {
-        self.group
+    pub fn id(&self) -> SpriteId {
+        self.id
     }
 
-    pub fn image(&self) -> u16 {
-        self.image
-    }
-
-    pub fn coordinates(&self) -> (i16, i16) {
+    pub fn coordinates(&self) -> Coordinates {
         self.coordinates
     }
 
@@ -199,11 +211,10 @@ impl<'a> Sprite<'a> {
 
     pub fn to_owned(&self) -> Sprite<'static> {
         Sprite {
+            id: self.id,
             data: Cow::Owned(self.raw_data().to_owned()),
             palette: Cow::Owned(self.palette().to_owned()),
             coordinates: self.coordinates,
-            group: self.group,
-            image: self.image,
         }
     }
 }
@@ -241,34 +252,58 @@ mod tests {
         let sprites = sff.sprites().collect::<Vec<_>>();
 
         assert_eq!(8, sprites.len());
+
+        assert_eq!(sprites[0].id, (0, 0).into());
+        assert_eq!(sprites[0].coordinates, (0, 0).into());
         assert_eq!(
             [sprites[0].raw_data(), sprites[0].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-0-0.pcx")
         );
+
+        assert_eq!(sprites[1].id, (0, 1).into());
+        assert_eq!(sprites[1].coordinates, (-50, -50).into());
         assert_eq!(
             [sprites[1].raw_data(), sprites[1].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-0-1.pcx")
         );
+
+        assert_eq!(sprites[2].id, (1, 0).into());
+        assert_eq!(sprites[2].coordinates, (-50, -50).into());
         assert_eq!(
             [sprites[2].raw_data(), sprites[2].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-1-0.pcx")
         );
+
+        assert_eq!(sprites[3].id, (1, 1).into());
+        assert_eq!(sprites[3].coordinates, (0, 0).into());
         assert_eq!(
             [sprites[3].raw_data(), sprites[3].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-1-1.pcx")
         );
+
+        assert_eq!(sprites[4].id, (10, 10).into());
+        assert_eq!(sprites[4].coordinates, (0, 0).into());
         assert_eq!(
             [sprites[4].raw_data(), sprites[4].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-10-10.pcx")
         );
+
+        assert_eq!(sprites[5].id, (10, 20).into());
+        assert_eq!(sprites[5].coordinates, (-100, -100).into());
         assert_eq!(
             [sprites[5].raw_data(), sprites[5].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-10-20.pcx")
         );
+
+        assert_eq!(sprites[6].id, (50, 0).into());
+        assert_eq!(sprites[6].coordinates, (-200, -200).into());
         assert_eq!(
             [sprites[6].raw_data(), sprites[6].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-50-0.pcx")
         );
+
+        assert_eq!(sprites[7].id, (50, 5).into());
+        assert_eq!(sprites[7].coordinates, (-200, -200).into());
         assert_eq!(
             [sprites[7].raw_data(), sprites[7].palette()].concat(),
             include_bytes!("../tests/samples/sample/sample-50-5.pcx")
@@ -283,34 +318,58 @@ mod tests {
         let sprites = sff.sprites().collect::<Vec<_>>();
 
         assert_eq!(8, sprites.len());
+
+        assert_eq!(sprites[0].id, (0, 0).into());
+        assert_eq!(sprites[0].coordinates, (0, 0).into());
         assert_eq!(
             [sprites[0].raw_data(), sprites[0].palette()].concat(),
             include_bytes!("../tests/samples/sample/linked-0.pcx")
         );
+
+        assert_eq!(sprites[1].id, (0, 1).into());
+        assert_eq!(sprites[1].coordinates, (-50, -50).into());
         assert_eq!(
             [sprites[1].raw_data(), sprites[1].palette()].concat(),
             include_bytes!("../tests/samples/sample/linked-0.pcx")
         );
+
+        assert_eq!(sprites[2].id, (1, 0).into());
+        assert_eq!(sprites[2].coordinates, (-50, -50).into());
         assert_eq!(
             [sprites[2].raw_data(), sprites[2].palette()].concat(),
             include_bytes!("../tests/samples/sample/linked-0.pcx")
         );
+
+        assert_eq!(sprites[3].id, (1, 1).into());
+        assert_eq!(sprites[3].coordinates, (0, 0).into());
         assert_eq!(
             [sprites[3].raw_data(), sprites[3].palette()].concat(),
             include_bytes!("../tests/samples/sample/linked-0.pcx")
         );
+
+        assert_eq!(sprites[4].id, (10, 10).into());
+        assert_eq!(sprites[4].coordinates, (0, 0).into());
         assert_eq!(
             [sprites[4].raw_data(), sprites[4].palette()].concat(),
             include_bytes!("../tests/samples/sample/linked-1.pcx")
         );
+
+        assert_eq!(sprites[5].id, (10, 20).into());
+        assert_eq!(sprites[5].coordinates, (-100, -100).into());
         assert_eq!(
             [sprites[5].raw_data(), sprites[5].palette()].concat(),
             include_bytes!("../tests/samples/sample/linked-1.pcx")
         );
+
+        assert_eq!(sprites[6].id, (50, 0).into());
+        assert_eq!(sprites[6].coordinates, (-200, -200).into());
         assert_eq!(
             [sprites[6].raw_data(), sprites[6].palette()].concat(),
             include_bytes!("../tests/samples/sample/linked-2.pcx")
         );
+
+        assert_eq!(sprites[7].id, (50, 5).into());
+        assert_eq!(sprites[7].coordinates, (-200, -200).into());
         assert_eq!(
             [sprites[7].raw_data(), sprites[7].palette()].concat(),
             include_bytes!("../tests/samples/sample/linked-2.pcx")
