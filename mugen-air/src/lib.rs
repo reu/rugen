@@ -39,7 +39,7 @@ enum Element {
 
 #[derive(Debug)]
 pub struct Frame {
-    pub group: i32,
+    pub group: u32,
     pub image: i32,
     pub x: i32,
     pub y: i32,
@@ -224,7 +224,7 @@ fn animation_element(i: Span) -> ParseResult<Element> {
 
 fn animation_frame(i: Span) -> ParseResult<Frame> {
     let (i, (group, image, x, y, ticks, flip, blend)) = tuple((
-        terminated(delimited(space0, i32, space0), char(',')),
+        terminated(delimited(space0, u32, space0), char(',')),
         terminated(delimited(space0, i32, space0), char(',')),
         terminated(delimited(space0, i32, space0), char(',')),
         terminated(delimited(space0, i32, space0), char(',')),
