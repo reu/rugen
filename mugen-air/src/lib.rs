@@ -88,8 +88,6 @@ impl CollisionBox {
 #[derive(Debug)]
 pub struct ParseError {
     pub line: u32,
-    pub column: usize,
-    pub offset: usize,
 }
 
 impl FromStr for Action {
@@ -100,8 +98,6 @@ impl FromStr for Action {
             Ok((_, action)) => Ok(action),
             Err(err) => Err(ParseError {
                 line: err.input.location_line(),
-                column: err.input.get_utf8_column(),
-                offset: err.input.location_offset(),
             }),
         }
     }
@@ -112,8 +108,6 @@ pub fn parse_air(air: &str) -> Result<Vec<Action>, ParseError> {
         Ok((_, actions)) => Ok(actions),
         Err(err) => Err(ParseError {
             line: err.input.location_line(),
-            column: err.input.get_utf8_column(),
-            offset: err.input.location_offset(),
         }),
     }
 }
@@ -420,8 +414,6 @@ mod tests {
         let text = "[begin action invalid]";
         let error = text.parse::<Action>().err().unwrap();
         assert_eq!(error.line, 1);
-        assert_eq!(error.column, 15);
-        assert_eq!(error.offset, 14);
 
         let text = indoc! {"
             [begin action 001]
@@ -430,7 +422,6 @@ mod tests {
         "};
         let error = text.parse::<Action>().err().unwrap();
         assert_eq!(error.line, 3);
-        assert_eq!(error.column, 1);
 
         let text = indoc! {"
             [begin action 001]
@@ -447,7 +438,6 @@ mod tests {
         "};
         let error = text.parse::<Action>().err().unwrap();
         assert_eq!(error.line, 5);
-        assert_eq!(error.column, 1);
 
         let text = indoc! {"
             [begin action 001]
@@ -467,7 +457,6 @@ mod tests {
         "};
         let error = parse_air(text).err().unwrap();
         assert_eq!(error.line, 11);
-        assert_eq!(error.column, 1);
     }
 
     #[test]
@@ -560,6 +549,12 @@ mod tests {
         assert_eq!(action.elements[3].flip, Flip::Horizontal);
         assert_eq!(action.elements[4].flip, Flip::Both);
         assert_eq!(action.elements[5].flip, Flip::Both);
+
+        let text = indoc! {"
+            [begin action 001]
+            200, 20, 30, 40, 50, O
+        "};
+        assert!(text.parse::<Action>().is_err());
     }
 
     #[test]
@@ -583,6 +578,12 @@ mod tests {
         assert_eq!(elems[4].blend, Some(Blend::Add { src: 256, dst: 64 }));
         assert_eq!(elems[5].blend, Some(Blend::Add { src: 256, dst: 32 }));
         assert_eq!(elems[6].blend, Some(Blend::Add { src: 33, dst: 44 }));
+
+        let text = indoc! {"
+            [begin action 001]
+            200, 20, 30, 40, 50, , invalid
+        "};
+        assert!(text.parse::<Action>().is_err());
     }
 
     #[test]
