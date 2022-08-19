@@ -6,7 +6,7 @@ use nom::{
     character::complete::{
         char, digit1, i32, line_ending, multispace0, one_of, space0, space1, u32,
     },
-    combinator::{map, map_res, opt, success},
+    combinator::{eof, map, map_res, opt, success, value},
     multi::{many0, many1, separated_list1},
     sequence::{delimited, preceded, terminated, tuple},
     Finish, IResult,
@@ -96,7 +96,7 @@ impl FromStr for Action {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match action(s.into()).finish() {
+        match single_action(s.into()).finish() {
             Ok((_, action)) => Ok(action),
             Err(err) => Err(ParseError {
                 line: err.input.location_line(),
@@ -119,7 +119,22 @@ pub fn parse_air(air: &str) -> Result<Vec<Action>, ParseError> {
 }
 
 fn actions(i: Span) -> ParseResult<Vec<Action>> {
-    many0(action)(i)
+    terminated(many0(action), ending)(i)
+}
+
+fn single_action(i: Span) -> ParseResult<Action> {
+    terminated(action, ending)(i)
+}
+
+fn ending(i: Span) -> ParseResult<Span> {
+    alt((
+        eof,
+        value("".into(), tuple((multispace0, eof))),
+        value(
+            "".into(),
+            tuple((multispace0, many0(comment_or_eol), multispace0, eof)),
+        ),
+    ))(i)
 }
 
 fn action(i: Span) -> ParseResult<Action> {
@@ -188,7 +203,7 @@ fn comment(i: Span) -> ParseResult<LocatedSpan<&str>> {
 }
 
 fn comment_or_eol(i: Span) -> ParseResult<LocatedSpan<&str>> {
-    alt((comment, line_ending))(i)
+    alt((comment, line_ending, eof))(i)
 }
 
 fn begin_action(i: Span) -> ParseResult<Span> {
@@ -407,6 +422,52 @@ mod tests {
         assert_eq!(error.line, 1);
         assert_eq!(error.column, 15);
         assert_eq!(error.offset, 14);
+
+        let text = indoc! {"
+            [begin action 001]
+            200, 20, 30, 40, 1
+            200, 20, 30, 40, invalid
+        "};
+        let error = text.parse::<Action>().err().unwrap();
+        assert_eq!(error.line, 3);
+        assert_eq!(error.column, 1);
+
+        let text = indoc! {"
+            [begin action 001]
+            200, 20, 30, 40, 1
+            200, 20, 30, 40, 2
+
+            [begin action 002]
+            200, 20, 30, 40, 1
+            200, 20, 30, 40, 2
+
+            [begin action 003]
+            200, 20, 30, 40, 1
+            200, 20, 30, 40, 2
+        "};
+        let error = text.parse::<Action>().err().unwrap();
+        assert_eq!(error.line, 5);
+        assert_eq!(error.column, 1);
+
+        let text = indoc! {"
+            [begin action 001]
+            200, 20, 30, 40, 1
+            200, 20, 30, 40, 2
+
+            [begin action 002]
+            200, 20, 30, 40, 1
+            200, 20, 30, 40, 2
+
+            [begin action 003]
+            200, 20, 30, 40, 1
+            200, 20, 30, 40, invalid
+
+            [begin action 004]
+            200, 20, 30, 40, 1
+        "};
+        let error = parse_air(text).err().unwrap();
+        assert_eq!(error.line, 11);
+        assert_eq!(error.column, 1);
     }
 
     #[test]
