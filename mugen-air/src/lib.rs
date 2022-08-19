@@ -119,20 +119,19 @@ pub fn parse_air(air: &str) -> Result<Vec<Action>, ParseError> {
 }
 
 fn actions(i: Span) -> ParseResult<Vec<Action>> {
-    many1(delimited(
-        tuple((multispace0, many0(comment_or_eol), multispace0)),
-        action,
-        tuple((multispace0, many0(comment_or_eol), multispace0)),
-    ))(i)
+    many0(action)(i)
 }
 
 fn action(i: Span) -> ParseResult<Action> {
-    let (i, name) = terminated(begin_action, tuple((space0, comment_or_eol)))(i)?;
+    let (i, name) = delimited(
+        tuple((multispace0, many0(comment_or_eol), multispace0)),
+        begin_action,
+        tuple((space0, comment_or_eol)),
+    )(i)?;
 
-    let (i, elements) = many1(delimited(
+    let (i, elements) = many1(preceded(
         tuple((multispace0, many0(comment_or_eol), multispace0)),
         animation_element,
-        tuple((multispace0, many0(comment_or_eol), multispace0)),
     ))(i)?;
 
     let mut elements: VecDeque<_> = elements.into();
@@ -192,17 +191,16 @@ fn comment_or_eol(i: Span) -> ParseResult<LocatedSpan<&str>> {
     alt((comment, line_ending))(i)
 }
 
-fn begin_action(i: Span) -> ParseResult<&str> {
+fn begin_action(i: Span) -> ParseResult<Span> {
     delimited(char('['), delimited(space0, action_name, space0), char(']'))(i)
 }
 
-fn action_name(i: Span) -> ParseResult<&str> {
+fn action_name(i: Span) -> ParseResult<Span> {
     let (i, _) = tag_no_case("begin")(i)?;
     let (i, _) = space1(i)?;
     let (i, _) = tag_no_case("action")(i)?;
     let (i, _) = space1(i)?;
-    let (i, name) = digit1(i)?;
-    Ok((i, &name))
+    digit1(i)
 }
 
 fn animation_element(i: Span) -> ParseResult<Element> {
@@ -367,10 +365,9 @@ fn clsn_boxes(i: Span) -> ParseResult<Element> {
     let (i, count) = preceded(space0, u32)(i)?;
 
     let (i, boxes) = map_res(
-        many1(delimited(
+        many1(preceded(
             tuple((multispace0, many0(comment_or_eol), multispace0)),
             clsn_box(kind),
-            tuple((multispace0, many0(comment_or_eol), multispace0)),
         )),
         |boxes| {
             if count as usize == boxes.len() {
@@ -444,6 +441,24 @@ mod tests {
 
         let text = indoc! {"
             [  begin   action  001  ]
+            200, 20, 30, 40, 50
+        "};
+        let action = text.parse::<Action>().unwrap();
+        assert_eq!(action.name, "001");
+
+        let text = indoc! {"
+               [begin action 001]
+            200, 20, 30, 40, 50
+        "};
+        let action = text.parse::<Action>().unwrap();
+        assert_eq!(action.name, "001");
+
+        let text = indoc! {"
+
+
+            ; Comment
+
+               [begin action 001]
             200, 20, 30, 40, 50
         "};
         let action = text.parse::<Action>().unwrap();
