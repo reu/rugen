@@ -1,12 +1,14 @@
-use std::str::FromStr;
+use std::{collections::VecDeque, fmt::Display, str::FromStr};
 
 use nom::{
     branch::alt,
-    bytes::complete::tag_no_case,
-    character::complete::{char, digit1, i32, line_ending, multispace0, space0, space1, u32},
+    bytes::complete::{tag, tag_no_case},
+    character::complete::{
+        char, digit1, i32, line_ending, multispace0, one_of, space0, space1, u32,
+    },
     combinator::{map, map_res, opt, success},
-    multi::many1,
-    sequence::{delimited, terminated, tuple},
+    multi::{many1, separated_list1},
+    sequence::{delimited, preceded, terminated, tuple},
     Finish, IResult,
 };
 use nom_locate::LocatedSpan;
@@ -25,6 +27,14 @@ pub struct Action {
 enum Element {
     Frame(Frame),
     LoopStart,
+    HurtBoxes {
+        default: bool,
+        boxes: Vec<CollisionBox>,
+    },
+    HitBoxes {
+        default: bool,
+        boxes: Vec<CollisionBox>,
+    },
 }
 
 #[derive(Debug)]
@@ -36,6 +46,8 @@ pub struct Frame {
     pub ticks: i32,
     pub flip: Flip,
     pub blend: Option<Blend>,
+    pub hit_boxes: Vec<CollisionBox>,
+    pub hurt_boxes: Vec<CollisionBox>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -50,6 +62,27 @@ pub enum Flip {
 pub enum Blend {
     Add { src: u32, dst: u32 },
     Sub,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct CollisionBox(i32, i32, i32, i32);
+
+impl CollisionBox {
+    pub fn x(&self) -> i32 {
+        self.0
+    }
+
+    pub fn y(&self) -> i32 {
+        self.1
+    }
+
+    pub fn width(&self) -> i32 {
+        self.2 - self.0
+    }
+
+    pub fn height(&self) -> i32 {
+        self.3 - self.1
+    }
 }
 
 #[derive(Debug)]
@@ -78,30 +111,50 @@ fn action(i: Span) -> ParseResult<Action> {
     let (i, name) = terminated(begin_action, line_ending)(i)?;
     let (i, elements) = many1(delimited(multispace0, animation_element, multispace0))(i)?;
 
-    let name = name.to_string();
+    let mut elements: VecDeque<_> = elements.into();
+    let mut frames = Vec::with_capacity(elements.len());
+    let mut loop_start = 0;
+    let mut time = 0;
+    let mut hit_boxes: (bool, Option<Vec<CollisionBox>>) = Default::default();
+    let mut hurt_boxes: (bool, Option<Vec<CollisionBox>>) = Default::default();
 
-    let loop_start = elements
-        .iter()
-        .take_while(|elem| !matches!(elem, Element::LoopStart))
-        .fold(0_usize, |time, elem| match elem {
-            Element::Frame(ref frame) if frame.ticks > 0 => time + frame.ticks as usize,
-            _ => time,
-        });
-
-    let frames = elements
-        .into_iter()
-        .filter_map(|elem| match elem {
-            Element::Frame(frame) => Some(frame),
-            _ => None,
-        })
-        .collect();
+    while let Some(elem) = elements.pop_front() {
+        match elem {
+            Element::Frame(frame) => {
+                let frame = Frame {
+                    hit_boxes: match hit_boxes {
+                        (true, ref boxes) => boxes.clone().unwrap_or_default(),
+                        (false, ref mut boxes) => boxes.take().unwrap_or_default(),
+                    },
+                    hurt_boxes: match hurt_boxes {
+                        (true, ref boxes) => boxes.clone().unwrap_or_default(),
+                        (false, ref mut boxes) => boxes.take().unwrap_or_default(),
+                    },
+                    ..frame
+                };
+                if frame.ticks >= 0 {
+                    time += frame.ticks;
+                    frames.push(frame);
+                } else {
+                    break;
+                }
+            }
+            Element::LoopStart => loop_start = time,
+            Element::HurtBoxes { default, boxes } => {
+                hurt_boxes = (default, Some(boxes));
+            }
+            Element::HitBoxes { default, boxes } => {
+                hit_boxes = (default, Some(boxes));
+            }
+        }
+    }
 
     Ok((
         i,
         Action {
-            name,
+            name: name.to_string(),
             elements: frames,
-            loop_start,
+            loop_start: loop_start as usize,
         },
     ))
 }
@@ -122,7 +175,7 @@ fn action_name(i: Span) -> ParseResult<&str> {
 fn animation_element(i: Span) -> ParseResult<Element> {
     let frame = map(animation_frame, Element::Frame);
     let loop_start = map(tag_no_case("loopstart"), |_| Element::LoopStart);
-    alt((frame, loop_start))(i)
+    alt((frame, loop_start, clsn_boxes))(i)
 }
 
 fn animation_frame(i: Span) -> ParseResult<Frame> {
@@ -158,6 +211,8 @@ fn animation_frame(i: Span) -> ParseResult<Frame> {
         ticks,
         flip: flip.unwrap_or(Flip::NoFlip),
         blend,
+        hit_boxes: Vec::new(),
+        hurt_boxes: Vec::new(),
     };
 
     Ok((i, elem))
@@ -212,6 +267,93 @@ fn element_blend(i: Span) -> ParseResult<Blend> {
     }
 
     alt((add_blend, sub_blend))(i)
+}
+
+fn clsn_boxes(i: Span) -> ParseResult<Element> {
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    enum ClsnBoxKind {
+        Hit,
+        Hurt,
+    }
+
+    impl Display for ClsnBoxKind {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                ClsnBoxKind::Hit => write!(f, "1"),
+                ClsnBoxKind::Hurt => write!(f, "2"),
+            }
+        }
+    }
+
+    fn clsn_box_kind(i: Span) -> ParseResult<ClsnBoxKind> {
+        map_res(one_of("12"), |k| match k {
+            '1' => Ok(ClsnBoxKind::Hit),
+            '2' => Ok(ClsnBoxKind::Hurt),
+            k => Err(format!("Invalid collision box kind: {k}")),
+        })(i)
+    }
+
+    fn clsn_box(expected_kind: ClsnBoxKind) -> impl Fn(Span) -> ParseResult<CollisionBox> {
+        move |i| {
+            let (i, _) = tag_no_case("Clsn")(i)?;
+            let (i, _) = map_res(clsn_box_kind, |found_kind| {
+                if expected_kind == found_kind {
+                    Ok(found_kind)
+                } else {
+                    Err(format!(
+                        "Expecting collision box kind {expected_kind} found: {found_kind}"
+                    ))
+                }
+            })(i)?;
+            let (i, _n) = delimited(tag("["), delimited(space0, u32, space0), tag("]"))(i)?;
+            let (i, _) = preceded(space0, tag("="))(i)?;
+            let (i, coords) = map_res(
+                separated_list1(tag(","), delimited(space0, i32, space0)),
+                |coords| {
+                    if coords.len() == 4 {
+                        Ok(coords)
+                    } else {
+                        Err("Invalid collision box")
+                    }
+                },
+            )(i)?;
+
+            Ok((i, CollisionBox(coords[0], coords[1], coords[2], coords[3])))
+        }
+    }
+
+    let (i, _) = tag_no_case("Clsn")(i)?;
+    let (i, kind) = clsn_box_kind(i)?;
+    let (i, def) = opt(tag_no_case("default"))(i)?;
+    let (i, _) = preceded(space0, tag(":"))(i)?;
+
+    let (i, count) = delimited(space0, u32, line_ending)(i)?;
+
+    let (i, boxes) = map_res(
+        many1(delimited(multispace0, clsn_box(kind), line_ending)),
+        |boxes| {
+            if count as usize == boxes.len() {
+                Ok(boxes)
+            } else {
+                Err(format!(
+                    "Expecting {count} collision boxes, found: {}",
+                    boxes.len()
+                ))
+            }
+        },
+    )(i)?;
+
+    let element = match kind {
+        ClsnBoxKind::Hit => Element::HitBoxes {
+            default: def.is_some(),
+            boxes,
+        },
+        ClsnBoxKind::Hurt => Element::HurtBoxes {
+            default: def.is_some(),
+            boxes,
+        },
+    };
+    Ok((i, element))
 }
 
 #[cfg(test)]
@@ -317,5 +459,113 @@ mod tests {
         "};
         let action = text.parse::<Action>().unwrap();
         assert_eq!(action.loop_start, 100);
+    }
+
+    #[test]
+    fn it_parses_collision_boxes() {
+        let text = indoc! {"
+            [begin action 001]
+            Clsn2: 2
+             Clsn2[0] =  15, -1,-24,-72
+             Clsn2[1] = -12,-84, 11,-61
+            200, 20, 30, 40, 50
+            200, 30, 30, 40, 50
+        "};
+        let action = text.parse::<Action>().unwrap();
+        let frames = &action.elements;
+        assert!(frames[0].hit_boxes.is_empty());
+        assert_eq!(frames[0].hurt_boxes.len(), 2);
+        assert_eq!(frames[0].hurt_boxes[0], CollisionBox(15, -1, -24, -72));
+        assert_eq!(frames[0].hurt_boxes[1], CollisionBox(-12, -84, 11, -61));
+        assert!(frames[1].hit_boxes.is_empty());
+        assert!(frames[1].hurt_boxes.is_empty());
+
+        let text = indoc! {"
+            [begin action 001]
+            Clsn1: 2
+             Clsn1[0] =  15, -1,-24,-72
+             Clsn1[1] = -12,-84, 11,-61
+            200, 20, 30, 40, 50
+            200, 30, 30, 40, 50
+        "};
+        let action = text.parse::<Action>().unwrap();
+        let frames = &action.elements;
+        assert!(frames[0].hurt_boxes.is_empty());
+        assert_eq!(frames[0].hit_boxes.len(), 2);
+        assert_eq!(frames[0].hit_boxes[0], CollisionBox(15, -1, -24, -72));
+        assert_eq!(frames[0].hit_boxes[1], CollisionBox(-12, -84, 11, -61));
+        assert!(frames[1].hurt_boxes.is_empty());
+        assert!(frames[1].hit_boxes.is_empty());
+    }
+
+    #[test]
+    fn it_parses_collision_boxes_defaults() {
+        let text = indoc! {"
+            [begin action 001]
+            clsn2default: 1
+             clsn2[0] =  15, -1,-24,-72
+            200, 20, 30, 40, 50
+            200, 40, 30, 40, 50
+        "};
+        let action = text.parse::<Action>().unwrap();
+        let frames = &action.elements;
+        assert!(frames[0].hit_boxes.is_empty());
+        assert_eq!(frames[0].hurt_boxes.len(), 1);
+        assert_eq!(frames[0].hurt_boxes[0], CollisionBox(15, -1, -24, -72));
+        assert!(frames[1].hit_boxes.is_empty());
+        assert_eq!(frames[1].hurt_boxes[0], CollisionBox(15, -1, -24, -72));
+
+        let text = indoc! {"
+            [begin action 001]
+            Clsn1default: 1
+             Clsn1[0] =  15, -1,-24,-72
+            200, 20, 30, 40, 50
+            200, 40, 30, 40, 50
+        "};
+        let action = text.parse::<Action>().unwrap();
+        let frames = &action.elements;
+        assert!(frames[0].hurt_boxes.is_empty());
+        assert_eq!(frames[0].hit_boxes.len(), 1);
+        assert_eq!(frames[0].hit_boxes[0], CollisionBox(15, -1, -24, -72));
+        assert!(frames[1].hurt_boxes.is_empty());
+        assert_eq!(frames[1].hit_boxes[0], CollisionBox(15, -1, -24, -72));
+    }
+
+    #[test]
+    fn it_rejects_collision_boxes_with_unmatched_kind() {
+        let text = indoc! {"
+            [begin action 001]
+            Clsn2: 1
+             clsn1[0] =  15, -1,-24,-72
+            200, 20, 30, 40, 50
+        "};
+        assert!(text.parse::<Action>().is_err());
+
+        let text = indoc! {"
+            [begin action 001]
+            Clsn1: 1
+             clsn2[0] =  15, -1,-24,-72
+            200, 20, 30, 40, 50
+        "};
+        assert!(text.parse::<Action>().is_err());
+    }
+
+    #[test]
+    fn it_rejects_collision_boxes_with_unmatched_count() {
+        let text = indoc! {"
+            [begin action 001]
+            Clsn2: 2
+             clsn2[0] =  15, -1,-24,-72
+            200, 20, 30, 40, 50
+        "};
+        assert!(text.parse::<Action>().is_err());
+
+        let text = indoc! {"
+            [begin action 001]
+            Clsn1: 2
+             clsn1[0] =  15, -1,-24,-72
+            200, 20, 30, 40, 50
+        "};
+        assert!(text.parse::<Action>().is_err());
     }
 }
