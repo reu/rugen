@@ -4,7 +4,7 @@ use nom::{
     branch::alt,
     bytes::complete::tag_no_case,
     character::complete::{char, digit1, i32, line_ending, multispace0, space0, space1, u32},
-    combinator::{map_res, opt, success},
+    combinator::{map, map_res, opt, success},
     multi::many1,
     sequence::{delimited, terminated, tuple},
     Finish, IResult,
@@ -17,11 +17,18 @@ type ParseResult<'a, T> = IResult<Span<'a>, T>;
 #[derive(Debug)]
 pub struct Action {
     pub name: String,
-    pub elements: Vec<AnimationElement>,
+    pub elements: Vec<Frame>,
+    pub loop_start: usize,
 }
 
 #[derive(Debug)]
-pub struct AnimationElement {
+enum Element {
+    Frame(Frame),
+    LoopStart,
+}
+
+#[derive(Debug)]
+pub struct Frame {
     pub group: i32,
     pub image: i32,
     pub x: i32,
@@ -70,8 +77,33 @@ impl FromStr for Action {
 fn action(i: Span) -> ParseResult<Action> {
     let (i, name) = terminated(begin_action, line_ending)(i)?;
     let (i, elements) = many1(delimited(multispace0, animation_element, multispace0))(i)?;
+
     let name = name.to_string();
-    Ok((i, Action { name, elements }))
+
+    let loop_start = elements
+        .iter()
+        .take_while(|elem| !matches!(elem, Element::LoopStart))
+        .fold(0_usize, |time, elem| match elem {
+            Element::Frame(ref frame) if frame.ticks > 0 => time + frame.ticks as usize,
+            _ => time,
+        });
+
+    let frames = elements
+        .into_iter()
+        .filter_map(|elem| match elem {
+            Element::Frame(frame) => Some(frame),
+            _ => None,
+        })
+        .collect();
+
+    Ok((
+        i,
+        Action {
+            name,
+            elements: frames,
+            loop_start,
+        },
+    ))
 }
 
 fn begin_action(i: Span) -> ParseResult<&str> {
@@ -87,7 +119,13 @@ fn action_name(i: Span) -> ParseResult<&str> {
     Ok((i, &name))
 }
 
-fn animation_element(i: Span) -> ParseResult<AnimationElement> {
+fn animation_element(i: Span) -> ParseResult<Element> {
+    let frame = map(animation_frame, Element::Frame);
+    let loop_start = map(tag_no_case("loopstart"), |_| Element::LoopStart);
+    alt((frame, loop_start))(i)
+}
+
+fn animation_frame(i: Span) -> ParseResult<Frame> {
     let (i, (group, image, x, y, ticks, flip, blend)) = tuple((
         terminated(delimited(space0, i32, space0), char(',')),
         terminated(delimited(space0, i32, space0), char(',')),
@@ -112,7 +150,7 @@ fn animation_element(i: Span) -> ParseResult<AnimationElement> {
         )),
     ))(i)?;
 
-    let elem = AnimationElement {
+    let elem = Frame {
         group,
         image,
         x,
@@ -265,5 +303,19 @@ mod tests {
         assert_eq!(elems[4].blend, Some(Blend::Add { src: 256, dst: 64 }));
         assert_eq!(elems[5].blend, Some(Blend::Add { src: 256, dst: 32 }));
         assert_eq!(elems[6].blend, Some(Blend::Add { src: 33, dst: 44 }));
+    }
+
+    #[test]
+    fn it_parses_loop_start() {
+        let text = indoc! {"
+            [begin action 001]
+            200, 10, 30, 40, 50
+            200, 20, 30, 40, 50
+            loopstart
+            200, 30, 30, 40, 50
+            200, 40, 30, 40, 50
+        "};
+        let action = text.parse::<Action>().unwrap();
+        assert_eq!(action.loop_start, 100);
     }
 }
