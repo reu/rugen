@@ -2,12 +2,12 @@ use std::{collections::VecDeque, fmt::Display, str::FromStr};
 
 use nom::{
     branch::alt,
-    bytes::complete::{tag, tag_no_case},
+    bytes::complete::{is_not, tag, tag_no_case},
     character::complete::{
         char, digit1, i32, line_ending, multispace0, one_of, space0, space1, u32,
     },
     combinator::{map, map_res, opt, success},
-    multi::{many1, separated_list1},
+    multi::{many0, many1, separated_list1},
     sequence::{delimited, preceded, terminated, tuple},
     Finish, IResult,
 };
@@ -108,8 +108,13 @@ impl FromStr for Action {
 }
 
 fn action(i: Span) -> ParseResult<Action> {
-    let (i, name) = terminated(begin_action, line_ending)(i)?;
-    let (i, elements) = many1(delimited(multispace0, animation_element, multispace0))(i)?;
+    let (i, name) = terminated(begin_action, tuple((space0, comment_or_eol)))(i)?;
+
+    let (i, elements) = many1(delimited(
+        tuple((multispace0, many0(comment_or_eol), multispace0)),
+        animation_element,
+        tuple((multispace0, many0(comment_or_eol), multispace0)),
+    ))(i)?;
 
     let mut elements: VecDeque<_> = elements.into();
     let mut frames = Vec::with_capacity(elements.len());
@@ -159,6 +164,14 @@ fn action(i: Span) -> ParseResult<Action> {
     ))
 }
 
+fn comment(i: Span) -> ParseResult<LocatedSpan<&str>> {
+    preceded(tag(";"), is_not("\n"))(i)
+}
+
+fn comment_or_eol(i: Span) -> ParseResult<LocatedSpan<&str>> {
+    alt((comment, line_ending))(i)
+}
+
 fn begin_action(i: Span) -> ParseResult<&str> {
     delimited(char('['), delimited(space0, action_name, space0), char(']'))(i)
 }
@@ -175,7 +188,11 @@ fn action_name(i: Span) -> ParseResult<&str> {
 fn animation_element(i: Span) -> ParseResult<Element> {
     let frame = map(animation_frame, Element::Frame);
     let loop_start = map(tag_no_case("loopstart"), |_| Element::LoopStart);
-    alt((frame, loop_start, clsn_boxes))(i)
+    alt((
+        terminated(frame, tuple((space0, comment_or_eol))),
+        terminated(loop_start, tuple((space0, comment_or_eol))),
+        clsn_boxes,
+    ))(i)
 }
 
 fn animation_frame(i: Span) -> ParseResult<Frame> {
@@ -327,10 +344,14 @@ fn clsn_boxes(i: Span) -> ParseResult<Element> {
     let (i, def) = opt(tag_no_case("default"))(i)?;
     let (i, _) = preceded(space0, tag(":"))(i)?;
 
-    let (i, count) = delimited(space0, u32, line_ending)(i)?;
+    let (i, count) = preceded(space0, u32)(i)?;
 
     let (i, boxes) = map_res(
-        many1(delimited(multispace0, clsn_box(kind), line_ending)),
+        many1(delimited(
+            tuple((multispace0, many0(comment_or_eol), multispace0)),
+            clsn_box(kind),
+            tuple((multispace0, many0(comment_or_eol), multispace0)),
+        )),
         |boxes| {
             if count as usize == boxes.len() {
                 Ok(boxes)
@@ -453,7 +474,7 @@ mod tests {
             [begin action 001]
             200, 10, 30, 40, 50
             200, 20, 30, 40, 50
-            loopstart
+             loopstart
             200, 30, 30, 40, 50
             200, 40, 30, 40, 50
         "};
@@ -567,5 +588,75 @@ mod tests {
             200, 20, 30, 40, 50
         "};
         assert!(text.parse::<Action>().is_err());
+    }
+    #[test]
+    fn it_ignores_comments() {
+        let text = indoc! {"
+            [begin action 001] ; Comment
+            200, 20, 30, 40, 50 ; Comment
+            200, 20, 30, 40, 50; Comment
+        "};
+        assert!(text.parse::<Action>().is_ok());
+        let action = text.parse::<Action>().unwrap();
+        assert_eq!(action.elements.len(), 2);
+
+        let text = indoc! {"
+            [begin action 001]
+            200, 20, 30, 40, 50 ; Comment
+        "};
+        assert!(text.parse::<Action>().is_ok());
+        let action = text.parse::<Action>().unwrap();
+        assert_eq!(action.elements.len(), 1);
+
+        let text = indoc! {"
+            [begin action 001]
+            ; Comment
+            ; Comment
+
+            ; Comment
+            200, 20, 30, 40, 50
+        "};
+        assert!(text.parse::<Action>().is_ok());
+        let action = text.parse::<Action>().unwrap();
+        assert_eq!(action.elements.len(), 1);
+
+        let text = indoc! {"
+            [begin action 001]
+            ; Comment
+            ; Comment
+            ; Comment
+            Clsn1default: 1; Comment
+            ; Comment
+            ; Comment
+
+            ; Comment
+             Clsn1[0] =  15, -1,-24,-72 ; Comment
+            ; Comment
+            ; Comment
+            200, 20, 30, 40, 50
+            Clsn1: 2 ; Comment
+             Clsn1[0] =  16, -1,-24,-72 ; Comment
+            ; Comment
+
+            ; Comment
+
+             Clsn1[1] = -12,-84, 11,-61 ; Comment
+            ; Comment
+            200, 40, 30, 40, 50
+        "};
+        assert!(text.parse::<Action>().is_ok());
+        let action = text.parse::<Action>().unwrap();
+        assert_eq!(
+            action.elements[0].hit_boxes[0],
+            CollisionBox(15, -1, -24, -72)
+        );
+        assert_eq!(
+            action.elements[1].hit_boxes[0],
+            CollisionBox(16, -1, -24, -72)
+        );
+        assert_eq!(
+            action.elements[1].hit_boxes[1],
+            CollisionBox(-12, -84, 11, -61)
+        );
     }
 }
