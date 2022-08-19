@@ -107,6 +107,25 @@ impl FromStr for Action {
     }
 }
 
+pub fn parse_air(air: &str) -> Result<Vec<Action>, ParseError> {
+    match actions(air.into()).finish() {
+        Ok((_, actions)) => Ok(actions),
+        Err(err) => Err(ParseError {
+            line: err.input.location_line(),
+            column: err.input.get_utf8_column(),
+            offset: err.input.location_offset(),
+        }),
+    }
+}
+
+fn actions(i: Span) -> ParseResult<Vec<Action>> {
+    many1(delimited(
+        tuple((multispace0, many0(comment_or_eol), multispace0)),
+        action,
+        tuple((multispace0, many0(comment_or_eol), multispace0)),
+    ))(i)
+}
+
 fn action(i: Span) -> ParseResult<Action> {
     let (i, name) = terminated(begin_action, tuple((space0, comment_or_eol)))(i)?;
 
@@ -141,6 +160,7 @@ fn action(i: Span) -> ParseResult<Action> {
                     time += frame.ticks;
                     frames.push(frame);
                 } else {
+                    frames.push(frame);
                     break;
                 }
             }
@@ -390,6 +410,27 @@ mod tests {
         assert_eq!(error.line, 1);
         assert_eq!(error.column, 15);
         assert_eq!(error.offset, 14);
+    }
+
+    #[test]
+    fn it_parses_air_file() {
+        let text = indoc! {"
+            [begin action 001]
+            200, 20, 30, 40, 50
+
+            [begin action 002]
+            200, 20, 30, 40, 50
+
+            ; Action 3
+            [begin action 003]
+            200, 20, 30, 40, 50
+
+        "};
+        let actions = parse_air(text).unwrap();
+        assert_eq!(actions.len(), 3);
+        assert_eq!(actions[0].name, "001");
+        assert_eq!(actions[1].name, "002");
+        assert_eq!(actions[2].name, "003");
     }
 
     #[test]
