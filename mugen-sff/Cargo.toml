@@ -1,7 +1,11 @@
 [package]
 name = "mugen-sff"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
+description = "M.U.G.E.N fighting game engine SFF codec library"
+license = "MIT"
+repository = "https://github.com/reu/rugen"
+categories = ["game-development", "encoding"]
 
 [dependencies]
 byteorder = "1.4.3"
