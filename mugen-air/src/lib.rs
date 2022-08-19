@@ -3,7 +3,7 @@ use std::str::FromStr;
 use nom::{
     branch::alt,
     bytes::complete::tag_no_case,
-    character::complete::{char, digit1, i32, line_ending, multispace0, space0, space1},
+    character::complete::{char, digit1, i32, line_ending, multispace0, space0, space1, u32},
     combinator::{map_res, opt, success},
     multi::many1,
     sequence::{delimited, terminated, tuple},
@@ -41,7 +41,7 @@ pub enum Flip {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Blend {
-    Add,
+    Add { src: u32, dst: u32 },
     Sub,
 }
 
@@ -145,8 +145,27 @@ fn element_flip(i: Span) -> ParseResult<Flip> {
 
 fn element_blend(i: Span) -> ParseResult<Blend> {
     fn add_blend(i: Span) -> ParseResult<Blend> {
+        alt((full_add_blend, short_add_blend))(i)
+    }
+
+    fn short_add_blend(i: Span) -> ParseResult<Blend> {
         let (i, _) = tag_no_case("A")(i)?;
-        Ok((i, Blend::Add))
+        let (i, dst) = opt(u32)(i)?;
+        let dst = match dst {
+            Some(n) => 256 / 2_u32.pow(n),
+            _ => 256,
+        };
+
+        Ok((i, Blend::Add { src: 256, dst }))
+    }
+
+    fn full_add_blend(i: Span) -> ParseResult<Blend> {
+        let (i, _) = tag_no_case("AS")(i)?;
+        let (i, src) = u32(i)?;
+        let (i, _) = tag_no_case("D")(i)?;
+        let (i, dst) = u32(i)?;
+
+        Ok((i, Blend::Add { src, dst }))
     }
 
     fn sub_blend(i: Span) -> ParseResult<Blend> {
@@ -232,10 +251,19 @@ mod tests {
             200, 20, 30, 40, 50
             200, 20, 30, 40, 50, , A
             200, 20, 30, 40, 50, , S
+            200, 20, 30, 40, 50, , A1
+            200, 20, 30, 40, 50, , A2
+            200, 20, 30, 40, 50, , A3
+            200, 20, 30, 40, 50, , AS33D44
         "};
         let action = text.parse::<Action>().unwrap();
-        assert_eq!(action.elements[0].blend, None);
-        assert_eq!(action.elements[1].blend, Some(Blend::Add));
-        assert_eq!(action.elements[2].blend, Some(Blend::Sub));
+        let elems = &action.elements;
+        assert_eq!(elems[0].blend, None);
+        assert_eq!(elems[1].blend, Some(Blend::Add { src: 256, dst: 256 }));
+        assert_eq!(elems[2].blend, Some(Blend::Sub));
+        assert_eq!(elems[3].blend, Some(Blend::Add { src: 256, dst: 128 }));
+        assert_eq!(elems[4].blend, Some(Blend::Add { src: 256, dst: 64 }));
+        assert_eq!(elems[5].blend, Some(Blend::Add { src: 256, dst: 32 }));
+        assert_eq!(elems[6].blend, Some(Blend::Add { src: 33, dst: 44 }));
     }
 }
