@@ -28,6 +28,7 @@ pub struct AnimationElement {
     pub y: i32,
     pub ticks: i32,
     pub flip: Flip,
+    pub blend: Option<Blend>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -36,6 +37,12 @@ pub enum Flip {
     Horizontal,
     Vertical,
     Both,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Blend {
+    Add,
+    Sub,
 }
 
 #[derive(Debug)]
@@ -81,7 +88,7 @@ fn action_name(i: Span) -> ParseResult<&str> {
 }
 
 fn animation_element(i: Span) -> ParseResult<AnimationElement> {
-    let (i, (group, image, x, y, ticks, flip)) = tuple((
+    let (i, (group, image, x, y, ticks, flip, blend)) = tuple((
         terminated(delimited(space0, i32, space0), char(',')),
         terminated(delimited(space0, i32, space0), char(',')),
         terminated(delimited(space0, i32, space0), char(',')),
@@ -95,6 +102,14 @@ fn animation_element(i: Span) -> ParseResult<AnimationElement> {
             ),
             success(None),
         )),
+        alt((
+            delimited(
+                delimited(space0, char(','), space0),
+                opt(element_blend),
+                space0,
+            ),
+            success(None),
+        )),
     ))(i)?;
 
     let elem = AnimationElement {
@@ -104,6 +119,7 @@ fn animation_element(i: Span) -> ParseResult<AnimationElement> {
         y,
         ticks,
         flip: flip.unwrap_or(Flip::NoFlip),
+        blend,
     };
 
     Ok((i, elem))
@@ -125,6 +141,20 @@ fn element_flip(i: Span) -> ParseResult<Flip> {
             _ => Err("Invalid flip"),
         }
     })(i)
+}
+
+fn element_blend(i: Span) -> ParseResult<Blend> {
+    fn add_blend(i: Span) -> ParseResult<Blend> {
+        let (i, _) = tag_no_case("A")(i)?;
+        Ok((i, Blend::Add))
+    }
+
+    fn sub_blend(i: Span) -> ParseResult<Blend> {
+        let (i, _) = tag_no_case("S")(i)?;
+        Ok((i, Blend::Sub))
+    }
+
+    alt((add_blend, sub_blend))(i)
 }
 
 #[cfg(test)]
@@ -193,5 +223,19 @@ mod tests {
         assert_eq!(action.elements[3].flip, Flip::Horizontal);
         assert_eq!(action.elements[4].flip, Flip::Both);
         assert_eq!(action.elements[5].flip, Flip::Both);
+    }
+
+    #[test]
+    fn it_parses_animation_element_blend() {
+        let text = indoc! {"
+            [begin action 001]
+            200, 20, 30, 40, 50
+            200, 20, 30, 40, 50, , A
+            200, 20, 30, 40, 50, , S
+        "};
+        let action = text.parse::<Action>().unwrap();
+        assert_eq!(action.elements[0].blend, None);
+        assert_eq!(action.elements[1].blend, Some(Blend::Add));
+        assert_eq!(action.elements[2].blend, Some(Blend::Sub));
     }
 }
