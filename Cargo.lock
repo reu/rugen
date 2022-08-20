@@ -356,6 +356,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mugen-snd"
+version = "0.0.1"
+dependencies = [
+ "byteorder",
+]
+
+[[package]]
 name = "nanorand"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -540,6 +547,13 @@ name = "smallvec"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2fd0db749597d91ff862fd1d55ea87f7855a744a8425a64695b6fca237d1dad1"
+
+[[package]]
+name = "snd-sample-extract"
+version = "0.1.0"
+dependencies = [
+ "mugen-snd",
+]
 
 [[package]]
 name = "spin"

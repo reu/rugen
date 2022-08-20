@@ -2,5 +2,6 @@
 members = [
   "./mugen-air",
   "./mugen-sff",
+  "./mugen-snd",
   "./examples/*",
 ]

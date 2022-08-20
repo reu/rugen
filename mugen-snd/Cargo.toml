@@ -1,0 +1,11 @@
+[package]
+name = "mugen-snd"
+version = "0.0.1"
+edition = "2021"
+description = "M.U.G.E.N fighting game engine SND codec library"
+license = "MIT"
+repository = "https://github.com/reu/rugen"
+categories = ["game-development", "encoding"]
+
+[dependencies]
+byteorder = "1.4.3"
