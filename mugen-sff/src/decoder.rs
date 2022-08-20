@@ -31,6 +31,10 @@ pub enum DecodeError {
         sprite_id: SpriteId,
         linked_index: u16,
     },
+    ImageCountMismatch {
+        expected_count: u32,
+        found_count: u32,
+    },
 }
 
 impl Display for DecodeError {
@@ -49,6 +53,10 @@ impl Display for DecodeError {
                 "invalid link {} for sprite {}-{}",
                 linked_index, sprite_id.group, sprite_id.image
             ),
+            DecodeError::ImageCountMismatch {
+                expected_count,
+                found_count,
+            } => write!(f, "expected {expected_count} images, found {found_count}"),
         }
     }
 }
@@ -160,6 +168,13 @@ impl<'a> Decoder<'a> {
             };
 
             images.push(sprite);
+        }
+
+        if images.len() != images_count as usize {
+            return Err(DecodeError::ImageCountMismatch {
+                expected_count: images_count,
+                found_count: images.len() as u32,
+            });
         }
 
         Ok(Decoder {
