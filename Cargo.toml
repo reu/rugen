@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "./mugen-air",
+  "./mugen-def",
   "./mugen-sff",
   "./mugen-snd",
   "./examples/*",

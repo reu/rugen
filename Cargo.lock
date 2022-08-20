@@ -349,6 +349,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mugen-def"
+version = "0.0.0"
+dependencies = [
+ "indoc",
+ "nom",
+ "nom_locate",
+]
+
+[[package]]
 name = "mugen-sff"
 version = "0.0.1"
 dependencies = [

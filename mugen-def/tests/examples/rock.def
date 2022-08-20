@@ -1,0 +1,28 @@
+[Info]
+name     = "NeoRock"
+displayname = "Rock Howard"
+versiondate = 10,27,2000
+mugenversion = 07,31,2000
+author = "NeoGouki"
+pal.defaults = 3,6,9,12
+
+[Files]
+cmd      = rock.cmd
+cns      = rock.cns
+st       = rock.cns
+stcommon = common1.cns
+sprite   = rock.sff
+anim     = rock.air
+sound   = rock.snd
+pal1     = rock01.act
+pal2     = rock01.act
+pal3     = rock01.act
+pal4     = rock02.act
+pal5     = rock02.act
+pal6     = rock02.act
+pal7     = rock03.act
+pal8     = rock03.act
+pal9     = rock03.act
+pal10    = rock04.act
+pal11    = rock04.act
+pal12    = rock04.act

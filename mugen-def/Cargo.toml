@@ -1,0 +1,15 @@
+[package]
+name = "mugen-def"
+version = "0.0.0"
+edition = "2021"
+description = "M.U.G.E.N fighting game engine DEF, CNS and CMD parser"
+license = "MIT"
+repository = "https://github.com/reu/rugen"
+categories = ["game-development", "parser-implementations"]
+
+[dependencies]
+nom = "7.1.1"
+nom_locate = "4.0.0"
+
+[dev-dependencies]
+indoc = "1.0.7"
