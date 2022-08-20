@@ -1,0 +1,27 @@
+[Info]
+name     = "Chris"
+versiondate = 12,03,2000
+mugenversion = 11,29,2000
+author = "NeoGouki"
+pal.defaults = 5,6,7,8
+
+[Files]
+cmd      = chris.cmd
+cns      = chris.cns
+st       = chris.cns
+stcommon = common1.cns
+sprite   = chris.sff
+anim     = chris.air
+sound    = chris.snd
+pal1     = kof97e.act
+pal2     = kof97f.act
+pal3     = kof97g.act
+pal4     = kof97h.act
+pal5     = kof98a.act
+pal6     = kof98b.act
+pal7     = kof98c.act
+pal8     = kof98d.act
+pal9     = kof98e.act
+pal10    = kof98f.act
+pal11    = kof98g.act
+pal12    = kof98h.act

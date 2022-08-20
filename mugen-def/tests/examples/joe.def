@@ -1,0 +1,20 @@
+[Info]
+name     = "Joe Higashi"
+versiondate = 10,20,2000
+mugenversion = 11,29,2000
+author = "NeoGouki"
+pal.defaults = 1,2,3,4
+
+[Files]
+cmd      = joe.cmd
+cns      = joe.cns
+st       = joe.cns
+stcommon = common1.cns
+sprite   = joe.sff
+anim     = joe.air
+sound    = joe.snd
+pal1     = joe01.act
+pal2     = joe02.act
+pal3     = joe03.act
+pal4     = joe04.act
+pal5     = joe05.act
